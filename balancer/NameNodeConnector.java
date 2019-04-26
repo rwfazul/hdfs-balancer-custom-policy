@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.URI;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -31,22 +30,24 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import com.google.common.base.Preconditions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FsServerDefaults;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.StreamCapabilities.StreamCapability;
 import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.hadoop.hdfs.NameNodeProxies;
 import org.apache.hadoop.hdfs.protocol.AlreadyBeingCreatedException;
-import org.apache.hadoop.hdfs.protocol.ClientProtocol;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants.DatanodeReportType;
 import org.apache.hadoop.hdfs.protocol.RollingUpgradeInfo;
+import org.apache.hadoop.hdfs.server.protocol.BalancerProtocols;
 import org.apache.hadoop.hdfs.server.protocol.BlocksWithLocations;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeStorageReport;
 import org.apache.hadoop.hdfs.server.protocol.NamenodeProtocol;
@@ -61,11 +62,13 @@ import com.google.common.annotations.VisibleForTesting;
  */
 @InterfaceAudience.Private
 public class NameNodeConnector implements Closeable {
-  private static final Log LOG = LogFactory.getLog(NameNodeConnector.class);
+  private static final Logger LOG =
+      LoggerFactory.getLogger(NameNodeConnector.class);
 
   public static final int DEFAULT_MAX_IDLE_ITERATIONS = 5;
   private static boolean write2IdFile = true;
-  
+  private static boolean checkOtherInstanceRunning = true;
+
   /** Create {@link NameNodeConnector} for the given namenodes. */
   public static List<NameNodeConnector> newNameNodeConnectors(
       Collection<URI> namenodes, String name, Path idPath, Configuration conf,
@@ -100,17 +103,21 @@ public class NameNodeConnector implements Closeable {
     NameNodeConnector.write2IdFile = write2IdFile;
   }
 
+  @VisibleForTesting
+  public static void checkOtherInstanceRunning(boolean toCheck) {
+    NameNodeConnector.checkOtherInstanceRunning = toCheck;
+  }
+
   private final URI nameNodeUri;
   private final String blockpoolID;
 
-  private final NamenodeProtocol namenode;
-  private final ClientProtocol client;
+  private final BalancerProtocols namenode;
   private final KeyManager keyManager;
   final AtomicBoolean fallbackToSimpleAuth = new AtomicBoolean(false);
 
   private final DistributedFileSystem fs;
   private final Path idPath;
-  private final OutputStream out;
+  private OutputStream out;
   private final List<Path> targetPaths;
   private final AtomicLong bytesMoved = new AtomicLong();
 
@@ -128,9 +135,7 @@ public class NameNodeConnector implements Closeable {
     this.maxNotChangedIterations = maxNotChangedIterations;
 
     this.namenode = NameNodeProxies.createProxy(conf, nameNodeUri,
-        NamenodeProtocol.class).getProxy();
-    this.client = NameNodeProxies.createProxy(conf, nameNodeUri,
-        ClientProtocol.class, fallbackToSimpleAuth).getProxy();
+        BalancerProtocols.class, fallbackToSimpleAuth).getProxy();
     this.fs = (DistributedFileSystem)FileSystem.get(nameNodeUri, conf);
 
     final NamespaceInfo namespaceinfo = namenode.versionRequest();
@@ -140,10 +145,12 @@ public class NameNodeConnector implements Closeable {
     this.keyManager = new KeyManager(blockpoolID, namenode,
         defaults.getEncryptDataTransfer(), conf);
     // if it is for test, we do not create the id file
-    out = checkAndMarkRunning();
-    if (out == null) {
-      // Exit if there is another one running.
-      throw new IOException("Another " + name + " is running.");
+    if (checkOtherInstanceRunning) {
+      out = checkAndMarkRunning();
+      if (out == null) {
+        // Exit if there is another one running.
+        throw new IOException("Another " + name + " is running.");
+      }
     }
   }
 
@@ -161,9 +168,10 @@ public class NameNodeConnector implements Closeable {
   }
 
   /** @return blocks with locations. */
-  public BlocksWithLocations getBlocks(DatanodeInfo datanode, long size)
+  public BlocksWithLocations getBlocks(DatanodeInfo datanode, long size, long
+      minBlockSize)
       throws IOException {
-    return namenode.getBlocks(datanode, size);
+    return namenode.getBlocks(datanode, size, minBlockSize);
   }
 
   /**
@@ -183,7 +191,7 @@ public class NameNodeConnector implements Closeable {
   /** @return live datanode storage reports. */
   public DatanodeStorageReport[] getLiveDatanodeStorageReport()
       throws IOException {
-    return client.getDatanodeStorageReport(DatanodeReportType.LIVE);
+    return namenode.getDatanodeStorageReport(DatanodeReportType.LIVE);
   }
 
   /** @return the key manager */
@@ -244,7 +252,12 @@ public class NameNodeConnector implements Closeable {
       }
 
       final FSDataOutputStream fsout = fs.createFile(idPath)
-          .overwrite(false).recursive().build();
+          .replicate().recursive().build();
+
+      Preconditions.checkState(
+          fsout.hasCapability(StreamCapability.HFLUSH.getValue())
+          && fsout.hasCapability(StreamCapability.HSYNC.getValue()),
+          "Id lock file should support hflush and hsync");
 
       // mark balancer idPath to be deleted during filesystem closure
       fs.deleteOnExit(idPath);
@@ -262,6 +275,14 @@ public class NameNodeConnector implements Closeable {
     }
   }
 
+  /**
+   * Returns fallbackToSimpleAuth. This will be true or false during calls to
+   * indicate if a secure client falls back to simple auth.
+   */
+  public AtomicBoolean getFallbackToSimpleAuth() {
+    return fallbackToSimpleAuth;
+  }
+
   @Override
   public void close() {
     keyManager.close();
@@ -270,11 +291,17 @@ public class NameNodeConnector implements Closeable {
     IOUtils.closeStream(out); 
     if (fs != null) {
       try {
-        fs.delete(idPath, true);
+        if (checkOtherInstanceRunning) {
+          fs.delete(idPath, true);
+        }
       } catch(IOException ioe) {
         LOG.warn("Failed to delete " + idPath, ioe);
       }
     }
+  }
+
+  public NamenodeProtocol getNNProtocolConnection() {
+    return this.namenode;
   }
 
   @Override
