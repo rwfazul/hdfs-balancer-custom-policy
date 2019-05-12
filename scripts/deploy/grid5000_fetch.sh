@@ -1,5 +1,7 @@
 #!/bin/bash
 
+HADOOP="$HOME/hadoop/hadoop"
+
 ARGC=$# 
 MAX_ARGS=1
 BRANCH=$1
