@@ -96,7 +96,7 @@ final class BalancerParameters {
 
   @Override
   public String toString() {
-    return String.format("%s.%s [%s," + " threshold = %s,"
+    return String.format("DATA AVAILABILITY BALANCER: %s.%s [%s," + " threshold = %s,"
         + " max idle iteration = %s," + " #excluded nodes = %s,"
         + " #included nodes = %s," + " #source nodes = %s,"
         + " #blockpools = %s," + " run during upgrade = %s]",
