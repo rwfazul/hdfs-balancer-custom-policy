@@ -68,6 +68,7 @@ import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.Status;
 import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
 import org.apache.hadoop.hdfs.server.balancer.Dispatcher.DDatanode.StorageGroup;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicy;
+import org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyRackFaultTolerant;
 import org.apache.hadoop.hdfs.server.protocol.BlocksWithLocations;
 import org.apache.hadoop.hdfs.server.protocol.BlocksWithLocations.BlockWithLocations;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeStorageReport;
@@ -133,6 +134,7 @@ public class Dispatcher {
 
   private final boolean connectToDnViaHostname;
   private BlockPlacementPolicy placementPolicy;
+  private BlockPlacementPolicy policyRackFaultTolerant;
 
   static class Allocator {
     private final int max;
@@ -951,6 +953,17 @@ public class Dispatcher {
         HdfsClientConfigKeys.DFS_CLIENT_USE_DN_HOSTNAME_DEFAULT);
     this.placementPolicy =
         BlockPlacementPolicy.getInstance(conf, null, cluster, null);
+
+    conf.setClass(DFSConfigKeys.DFS_BLOCK_REPLICATOR_CLASSNAME_KEY,
+        BlockPlacementPolicyRackFaultTolerant.class,
+        BlockPlacementPolicy.class);
+
+    this.policyRackFaultTolerant =  
+	BlockPlacementPolicy.getInstance(conf, null, cluster, null);
+
+    conf.setClass(DFSConfigKeys.DFS_BLOCK_REPLICATOR_CLASSNAME_KEY,
+        DFSConfigKeys.DFS_BLOCK_REPLICATOR_CLASSNAME_DEFAULT,
+        BlockPlacementPolicy.class);
   }
 
   public DistributedFileSystem getDistributedFileSystem() {
@@ -1226,7 +1239,7 @@ public class Dispatcher {
       }
       datanodeInfos.add(target.getDatanodeInfo());
     }
-    return placementPolicy.isMovable(
+    return policyRackFaultTolerant.isMovable(
         datanodeInfos, source.getDatanodeInfo(), target.getDatanodeInfo());
   }
 
