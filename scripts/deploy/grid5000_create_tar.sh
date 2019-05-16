@@ -2,5 +2,6 @@
 
 HADOOP="$HOME/hadoop"
 
-rm $HADOOP/hadoop.tar.gz
-tar -zcvf $HADOOP/hadoop.tar.gz $HADOOP/hadoop
+cd $HADOOP
+rm hadoop-custom-2.9.2.tar.gz
+tar -zcvf hadoop-custom-2.9.2.tar.gz hadoop-custom-2.9.2
