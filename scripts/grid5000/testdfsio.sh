@@ -1,16 +1,21 @@
 #!/bin/bash
 
+# teste de sobrecarga -> leitura com dist padrao e com prioridade de disponibilidade
+# oarsub -t allow_classic_ssh -l cluster=2,nodes=3,walltime=14 "./block_availability.sh 3 10GB 0" -r '2019-05-17 19:05:00'
+# teste com falhas inteira de rack
+# setup 2 nodos (2 em 1 cluster x 1 em outro), kill 2 do mesmo cluster
+
 ARGC=$#    # num args passed to script
 MAX_ARGS=3 # <RF> <fileSize> <numFails>
 
-HADOOP_BIN_PATH="$HOME/hadoop/hadoop-2.9.2.tar.gz"
+HADOOP_BIN_PATH="$HOME/hadoop/hadoop-custom-2.9.2.tar.gz"
 DFSIO_PATH="$HOME/hadoop/hadoop-mapreduce-client-jobclient-2.9.2-tests.jar"
 
 NR_FILES=10
 FAIL_INITIAL_SLEEP=50
 FAIL_SLEEP_STEP=46
 READ_ITERATIONS=20
-BAL_THRESHOLD=10
+BAL_THRESHOLD=5
 
 OUTPUT_DIR=""
 EXTRACTOR_PATH="$HOME/extract.sh"
@@ -103,8 +108,10 @@ function runBalancer() {
 function RunTests() {
 	doClusterSetup $1 # <RF>
 	writeFiles $2 $3 "$OUTPUT_DIR/TestDFSIO_resultsWrite.log" "$OUTPUT_DIR/status-no-balancer.txt"      # <fileSize> <numFails> <logs_filepath>...
+	hdfs fsck / -files -blocks -locations >> $OUTPUT_DIR/blk_distr_no_balancer.txt
 	readFiles $2 "$OUTPUT_DIR/TestDFSIO_resultsRead_noBal.log" "$OUTPUT_DIR/times-read-no-balancer.txt" # <fileSize> <logs_filepath>...
 	runBalancer "$OUTPUT_DIR/HDFSBalancer.log" "$OUTPUT_DIR/status-balancer.txt"                        # <logs_filepath>...
+	hdfs fsck / -files -blocks -locations >> $OUTPUT_DIR/blk_distr_with_balancer.txt
 	readFiles $2 "$OUTPUT_DIR/TestDFSIO_resultsRead_withBal.log" "$OUTPUT_DIR/times-read-balancer.txt"  # <fileSize> <numFails> <logs_filepath>...
 	mv OAR.$OAR_JOB_ID.std* $OUTPUT_DIR/
 	$EXTRACTOR_PATH $1 $2 $3 $OUTPUT_DIR # extract results <RF> <fileSize> <numFails> <outputDir>
