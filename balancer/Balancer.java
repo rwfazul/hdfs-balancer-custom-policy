@@ -27,6 +27,7 @@ import java.text.DateFormat;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -206,11 +207,11 @@ public class Balancer {
   private final long defaultBlockSize;
 
   // all data node lists
-  private final Collection<Source> overUtilized = new LinkedList<Source>();
-  private final Collection<Source> aboveAvgUtilized = new LinkedList<Source>();
-  private final Collection<StorageGroup> belowAvgUtilized
+  private final LinkedList<Source> overUtilized = new LinkedList<Source>();
+  private final LinkedList<Source> aboveAvgUtilized = new LinkedList<Source>();
+  private final LinkedList<StorageGroup> belowAvgUtilized
       = new LinkedList<StorageGroup>();
-  private final Collection<StorageGroup> underUtilized
+  private final LinkedList<StorageGroup> underUtilized
       = new LinkedList<StorageGroup>();
 
   /* Check that this Balancer is compatible with the Block Placement Policy
@@ -458,7 +459,10 @@ public class Balancer {
 
   /** Decide all <source, target> pairs according to the matcher. */
   private void chooseStorageGroups(final Matcher matcher) {
-    /* first step: match each overUtilized datanode (source) to
+    
+	orderStorageGroupLists();
+	  
+	/* first step: match each overUtilized datanode (source) to
      * one or more underUtilized datanodes (targets).
      */
     LOG.info("chooseStorageGroups for " + matcher + ": overUtilized => underUtilized");
@@ -481,6 +485,21 @@ public class Balancer {
     chooseStorageGroups(underUtilized, aboveAvgUtilized, matcher);
   }
 
+  public void orderStorageGroupLists() {
+	Comparator<StorageGroup> comparator = new Comparator<StorageGroup>() {
+		@Override
+		public int compare(StorageGroup left, StorageGroup right) {
+			return Long.compare(
+				left.getDatanodeInfo().getCapacity(), right.getDatanodeInfo().getCapacity()
+			);
+		}
+	};
+	Collections.sort(overUtilized, comparator.reversed());
+	Collections.sort(aboveAvgUtilized, comparator.reversed());
+	Collections.sort(belowAvgUtilized, comparator);
+	Collections.sort(underUtilized, comparator);
+  }
+  
   /**
    * For each datanode, choose matching nodes from the candidates. Either the
    * datanodes or the candidates are source nodes with (utilization > Avg), and
