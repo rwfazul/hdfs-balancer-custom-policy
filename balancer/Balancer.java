@@ -46,6 +46,7 @@ import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.DFSUtil;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
+import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.server.balancer.Dispatcher.DDatanode;
 import org.apache.hadoop.hdfs.server.balancer.Dispatcher.DDatanode.StorageGroup;
 import org.apache.hadoop.hdfs.server.balancer.Dispatcher.Source;
@@ -486,11 +487,34 @@ public class Balancer {
   }
 
   public void orderStorageGroupLists() {
+	LOG.info("overUtilized LIST: ");
+	for (Source source : overUtilized) {
+		DatanodeInfo dn = source.getDatanodeInfo();
+		LOG.info("[ Host: " + source.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
+	}
+	
+	LOG.info("aboveAvgUtilized LIST: ");
+	for (Source source : aboveAvgUtilized) {
+		DatanodeInfo dn = source.getDatanodeInfo();
+		LOG.info("[ Host: " + source.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
+	} 
+
+	LOG.info("underAvgUtilized LIST: ");
+	for (StorageGroup target: belowAvgUtilized) {
+		DatanodeInfo dn = target.getDatanodeInfo();
+		LOG.info("[ Host: " + target.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
+	}
+	
+	LOG.info("underUtilized LIST: ");
+	for (StorageGroup target: underUtilized) { 
+		DatanodeInfo dn = target.getDatanodeInfo();
+		LOG.info("[ Host: " + target.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
+	}
 	Comparator<StorageGroup> comparator = new Comparator<StorageGroup>() {
 		@Override
 		public int compare(StorageGroup left, StorageGroup right) {
 			return Long.compare(
-				left.getDatanodeInfo().getCapacity(), right.getDatanodeInfo().getCapacity()
+				left.getDatanodeInfo().getNonDfsUsed(), right.getDatanodeInfo().getNonDfsUsed()
 			);
 		}
 	};
@@ -498,6 +522,30 @@ public class Balancer {
 	Collections.sort(aboveAvgUtilized, comparator.reversed());
 	Collections.sort(belowAvgUtilized, comparator);
 	Collections.sort(underUtilized, comparator);
+	
+	LOG.info("overUtilized LIST: ");
+	for (Source source : overUtilized) {
+		DatanodeInfo dn = source.getDatanodeInfo();
+		LOG.info("[ Host: " + source.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
+	}
+	
+	LOG.info("aboveAvgUtilized LIST: ");
+	for (Source source : aboveAvgUtilized) {
+		DatanodeInfo dn = source.getDatanodeInfo();
+		LOG.info("[ Host: " + source.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
+	} 
+
+	LOG.info("underAvgUtilized LIST: ");
+	for (StorageGroup target: belowAvgUtilized) {
+		DatanodeInfo dn = target.getDatanodeInfo();
+		LOG.info("[ Host: " + target.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
+	}
+	
+	LOG.info("underUtilized LIST: ");
+	for (StorageGroup target: underUtilized) { 
+		DatanodeInfo dn = target.getDatanodeInfo();
+		LOG.info("[ Host: " + target.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
+	}
   }
   
   /**
