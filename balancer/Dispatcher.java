@@ -1213,7 +1213,23 @@ public class Dispatcher {
     if (!isGoodBlockCandidateForPlacementPolicy(source, target, block)) {
       return false;
     }
-    return true;
+
+
+    final Map<String, Integer> rackMap = new HashMap<>();
+    for (StorageGroup blockLocation : block.getLocations()) {
+      DatanodeInfo dInfo = blockLocation.getDatanodeInfo();
+      final String rackName = dInfo.getNetworkLocation();
+      if (rackMap.get(rackName) == null) {
+        rackMap.put(rackName, 0);
+      }
+      rackMap.put(rackName, rackMap.get(rackName) + 1);
+    }
+    Integer replicasOnSource = rackMap.get(source.getDatanodeInfo().getNetworkLocation());
+    Integer replicasOnTarget = rackMap.get(target.getDatanodeInfo().getNetworkLocation());
+    if (replicasOnSource > 1 && !rackMap.keySet().contains(target.getDatanodeInfo().getNetworkLocation()))
+    	return true;
+    
+    return false;
   }
 
   // Check if the move will violate the block placement policy.
