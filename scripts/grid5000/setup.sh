@@ -3,7 +3,7 @@
 HADOOP_FOLDER=$HOME/hadoop/
 
 mkdir -p $HADOOP_FOLDER
-wget http://ftp.unicamp.br/pub/apache/hadoop/common/hadoop-2.9.2/hadoop-2.9.2.tar.gz -P $HADOOP_FOLDER
+wget --no-dns-cache --no-cache https://apache.mirrors.benatherton.com/hadoop/common/hadoop-2.9.2/hadoop-2.9.2.tar.gz -P $HADOOP_FOLDER
 (cd $HADOOP_FOLDER && tar -xvzf $HADOOP_FOLDER/hadoop-2.9.2.tar.gz)
 mv $HADOOP_FOLDER/hadoop-2.9.2/ $HADOOP_FOLDER/hadoop-custom-2.9.2/
 cp $HADOOP_FOLDER/hadoop-custom-2.9.2/share/hadoop/mapreduce/hadoop-mapreduce-client-jobclient-2.9.2-tests.jar $HADOOP_FOLDER/
