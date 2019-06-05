@@ -56,7 +56,6 @@ import org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicyDefault
 import org.apache.hadoop.hdfs.server.namenode.UnsupportedActionException;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeStorageReport;
 import org.apache.hadoop.hdfs.server.protocol.StorageReport;
-import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.net.NetUtils;
 import org.apache.hadoop.security.SecurityUtil;
@@ -208,11 +207,11 @@ public class Balancer {
   private final long defaultBlockSize;
 
   // all data node lists
-  private final LinkedList<Source> overUtilized = new LinkedList<Source>();
-  private final LinkedList<Source> aboveAvgUtilized = new LinkedList<Source>();
-  private final LinkedList<StorageGroup> belowAvgUtilized
+  private final Collection<Source> overUtilized = new LinkedList<Source>();
+  private final Collection<Source> aboveAvgUtilized = new LinkedList<Source>();
+  private final Collection<StorageGroup> belowAvgUtilized
       = new LinkedList<StorageGroup>();
-  private final LinkedList<StorageGroup> underUtilized
+  private final Collection<StorageGroup> underUtilized
       = new LinkedList<StorageGroup>();
 
   /* Check that this Balancer is compatible with the Block Placement Policy
@@ -282,7 +281,7 @@ public class Balancer {
     final long getBlocksMinBlockSize = getLongBytes(conf,
         DFSConfigKeys.DFS_BALANCER_GETBLOCKS_MIN_BLOCK_SIZE_KEY,
         DFSConfigKeys.DFS_BALANCER_GETBLOCKS_MIN_BLOCK_SIZE_DEFAULT);
-    final int blockMoveTimeout = conf.getInt(	
+    final int blockMoveTimeout = conf.getInt(
         DFSConfigKeys.DFS_BALANCER_BLOCK_MOVE_TIMEOUT,
         DFSConfigKeys.DFS_BALANCER_BLOCK_MOVE_TIMEOUT_DEFAULT);
     final int maxNoMoveInterval = conf.getInt(
@@ -394,7 +393,7 @@ public class Balancer {
         dispatcher.getStorageGroupMap().put(g);
       }
     }
-
+    orderStorageGroupLists();
     logUtilizationCollections();
     
     Preconditions.checkState(dispatcher.getStorageGroupMap().size()
@@ -460,7 +459,6 @@ public class Balancer {
 
   /** Decide all <source, target> pairs according to the matcher. */
   private void chooseStorageGroups(final Matcher matcher) {
-    orderStorageGroupLists();
     /* first step: match each overUtilized datanode (source) to
      * one or more underUtilized datanodes (targets).
      */
@@ -482,67 +480,6 @@ public class Balancer {
      */
     LOG.info("chooseStorageGroups for " + matcher + ": underUtilized => aboveAvgUtilized");
     chooseStorageGroups(underUtilized, aboveAvgUtilized, matcher);
-  }
-
-
-  private void orderStorageGroupLists() {
-    LOG.info("******* ANTES ORDENACAO *********");
-    LOG.info("overUtilized LIST: ");
-    for (Source source : overUtilized) {
-      DatanodeInfo dn = source.getDatanodeInfo();
-      LOG.info("[ Host: " + source.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
-    }
-    LOG.info("aboveAvgUtilized LIST: ");
-    for (Source source : aboveAvgUtilized) {
-      DatanodeInfo dn = source.getDatanodeInfo();
-      LOG.info("[ Host: " + source.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
-    } 
-    LOG.info("belowAvgUtilized LIST: ");
-    for (StorageGroup target: belowAvgUtilized) {
-       DatanodeInfo dn = target.getDatanodeInfo();
-       LOG.info("[ Host: " + target.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
-    }
-    LOG.info("underUtilized LIST: ");
-    for (StorageGroup target: underUtilized) { 
-      DatanodeInfo dn = target.getDatanodeInfo();
-      LOG.info("[ Host: " + target.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
-    }
-
-    Comparator<StorageGroup> comparator = new Comparator<StorageGroup>() {
-      @Override
-      public int compare(StorageGroup left, StorageGroup right) {
-        return Long.compare(
-	  left.getDatanodeInfo().getNonDfsUsed(), right.getDatanodeInfo().getNonDfsUsed()
-	);
-      }
-    }; 
-
-    Collections.sort(overUtilized, comparator);
-    Collections.sort(aboveAvgUtilized, comparator);
-    Collections.sort(belowAvgUtilized, comparator.reversed());
-    Collections.sort(underUtilized, comparator.reversed());
-
-    LOG.info("******* APOS ORDENACAO *********");
-    LOG.info("overUtilized LIST: ");
-    for (Source source : overUtilized) {
-      DatanodeInfo dn = source.getDatanodeInfo();
-      LOG.info("[ Host: " + source.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
-    }
-    LOG.info("aboveAvgUtilized LIST: ");
-    for (Source source : aboveAvgUtilized) {
-      DatanodeInfo dn = source.getDatanodeInfo();
-      LOG.info("[ Host: " + source.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
-    } 
-    LOG.info("belowAvgUtilized LIST: ");
-    for (StorageGroup target: belowAvgUtilized) {
-       DatanodeInfo dn = target.getDatanodeInfo();
-       LOG.info("[ Host: " + target.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
-    }
-    LOG.info("underUtilized LIST: ");
-    for (StorageGroup target: underUtilized) { 
-      DatanodeInfo dn = target.getDatanodeInfo();
-      LOG.info("[ Host: " + target.getDisplayName() + ", Capacity: " + dn.getCapacity() + ", dfsUsed: " +  dn.getDfsUsed() + ", nonDfsUsed: " + dn.getNonDfsUsed() + " ]");
-    }
   }
 
   /**
@@ -616,6 +553,50 @@ public class Balancer {
     return left.getStorageType() == right.getStorageType()
         && matcher.match(dispatcher.getCluster(),
             left.getDatanodeInfo(), right.getDatanodeInfo());
+  }
+
+  private void orderStorageGroupLists() {
+    LOG.info("*** lists before order ***");
+    printStorageGroupList(overUtilized, "overUtilized");
+    printStorageGroupList(aboveAvgUtilized, "aboveAvgUtilized");
+    printStorageGroupList(belowAvgUtilized, "belowAvgUtilized");
+    printStorageGroupList(underUtilized, "underAvgUtilized");
+    Comparator<StorageGroup> comparatorAscending = new Comparator<StorageGroup>() {
+      @Override
+      public int compare(StorageGroup left, StorageGroup right) {
+        return Long.compare(
+          left.getDatanodeInfo().getNonDfsUsed(), right.getDatanodeInfo().getNonDfsUsed()
+        );
+      }
+    };
+    Comparator<StorageGroup> comparatorDescending = new Comparator<StorageGroup>() {
+      @Override
+      public int compare(StorageGroup left, StorageGroup right) {
+        return Long.compare(
+          right.getDatanodeInfo().getNonDfsUsed(), left.getDatanodeInfo().getNonDfsUsed()
+        );
+      }
+    };
+    Collections.sort((LinkedList<Source>) overUtilized, comparatorAscending);
+    Collections.sort((LinkedList<Source>) aboveAvgUtilized, comparatorAscending);
+    Collections.sort((LinkedList<StorageGroup>) belowAvgUtilized, comparatorDescending);
+    Collections.sort((LinkedList<StorageGroup>) underUtilized, comparatorDescending);
+    LOG.info("*** lists after order ***");
+    printStorageGroupList(overUtilized, "overUtilized");
+    printStorageGroupList(aboveAvgUtilized, "aboveAvgUtilized");
+    printStorageGroupList(belowAvgUtilized, "belowAvgUtilized");
+    printStorageGroupList(underUtilized, "underAvgUtilized");
+  }
+  
+  private <T extends StorageGroup> void printStorageGroupList(Collection<T> list, String name) {
+    LOG.info(name + " {");
+    for (T t: list) { 
+        LOG.info("[ Host: " + t.getDisplayName() + 
+        		 ", Capacity: " + t.getDatanodeInfo().getCapacity() + 
+        		 ", dfsUsed: " +  t.getDatanodeInfo().getDfsUsed() + 
+        		 ", nonDfsUsed: " + t.getDatanodeInfo().getNonDfsUsed() + " ]");
+      }
+    LOG.info("}");
   }
 
   /* reset all fields in a balancer preparing for the next iteration */
