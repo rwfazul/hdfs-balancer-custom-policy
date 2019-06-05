@@ -1,6 +1,6 @@
 #!/bin/bash
 
-HADOOP="$HOME/hadoop/hadoop-custom-2.9.2"
+HADOOP="$HOME/hadoop/hadoop-2.9.2"
 JAR_DEST_PATH=../../target
 
 cp $JAR_DEST_PATH/hadoop-hdfs-2.9.2-sources.jar $HADOOP/share/hadoop/hdfs/sources/hadoop-hdfs-2.9.2-sources.jar
