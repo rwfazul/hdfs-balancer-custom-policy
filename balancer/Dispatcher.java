@@ -1224,11 +1224,17 @@ public class Dispatcher {
       }
       rackMap.put(rackName, rackMap.get(rackName) + 1);
     }
-    Integer replicasOnSource = rackMap.get(source.getDatanodeInfo().getNetworkLocation());
-    Integer replicasOnTarget = rackMap.get(target.getDatanodeInfo().getNetworkLocation());
-    if (replicasOnSource > 1 && !rackMap.keySet().contains(target.getDatanodeInfo().getNetworkLocation()))
+    Integer numOfClusterRacks = cluster.getNumOfRacks();
+    Integer numOfBlockReplicas = block.getLocations().size();
+    Integer numOfBlockRacks = rackMap.keySet().size();
+    if (numOfBlockRacks == numOfClusterRacks || numOfBlockRacks == numOfBlockReplicas)
+	return true;
+
+    Integer replicasOnSourceRack = rackMap.get(source.getDatanodeInfo().getNetworkLocation());
+ 	
+    if (replicasOnSourceRack > 1 && !rackMap.keySet().contains(target.getDatanodeInfo().getNetworkLocation()))
     	return true;
-    
+
     return false;
   }
 
