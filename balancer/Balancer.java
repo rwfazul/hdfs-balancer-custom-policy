@@ -32,6 +32,8 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.Set;
 
 import org.apache.commons.logging.Log;
@@ -213,6 +215,8 @@ public class Balancer {
   private final Collection<StorageGroup> underUtilized
       = new LinkedList<StorageGroup>();
 
+  private final Map<String, Double> weightMap = new HashMap<>();
+
   /* Check that this Balancer is compatible with the Block Placement Policy
    * used by the Namenode.
    */
@@ -343,7 +347,7 @@ public class Balancer {
       policy.accumulateSpaces(r);
     }
     policy.initAvgUtilization();
-
+    computeWeight(reports);
     // create network topology and classify utilization collections: 
     //   over-utilized, above-average, below-average and under-utilized.
     long overLoadedBytes = 0L, underLoadedBytes = 0L;
@@ -367,9 +371,9 @@ public class Balancer {
         final double utilizationDiff = utilization - average;
         final long capacity = getCapacity(r, t);
         final double thresholdDiff = Math.abs(utilizationDiff) - threshold;
-        final long maxSize2Move = computeMaxSize2Move(capacity,
+        long maxSize2Move = computeMaxSize2Move(capacity,
             getRemaining(r, t), utilizationDiff, maxSizeToMove);
-
+        maxSize2Move = recalcMaxSize2Move(r, t, capacity, utilization, average, maxSize2Move);
         final StorageGroup g;
         if (utilizationDiff > 0) {
           final Source s = dn.addSource(t, maxSize2Move, dispatcher);
@@ -402,6 +406,59 @@ public class Balancer {
     
     // return number of bytes to be moved in order to make the cluster balanced
     return Math.max(overLoadedBytes, underLoadedBytes);
+  }
+
+  private void computeWeight(final List<DatanodeStorageReport> reports) {
+    final Map<StorageType, LinkedList<Long>> capacityMap = new HashMap<>();
+    for(DatanodeStorageReport r : reports) {
+      for(StorageType t : StorageType.getMovableTypes()) {
+        final Double utilization = policy.getUtilization(r, t);
+        if (utilization == null) { // datanode does not have such storage type 
+          continue;
+        }
+        final long capacity = getCapacity(r, t);
+        if (!capacityMap.containsKey(t)) {
+          capacityMap.put(t, new LinkedList<Long>());
+        }
+        capacityMap.get(t).add(capacity);
+      }
+    }
+    for(DatanodeStorageReport r : reports) {
+      for(StorageType t : StorageType.getMovableTypes()) {
+        final long max = Collections.max(capacityMap.get(t));
+        final long min = Collections.min(capacityMap.get(t));
+        final double weight = (getCapacity(r, t) - min) / (max - min);
+        final String key = r.getDatanodeInfo().getDatanodeUuid() + ":" + t;
+        weightMap.put(key, weight);
+      }
+    }
+  }
+
+  private long recalcMaxSize2Move(final DatanodeStorageReport r, final StorageType t, 
+      final long capacity, final Double utilization, final double average, long maxSize2Move) {
+    final double utilizationDiff = utilization - average;
+    final double thresholdDiff = Math.abs(utilizationDiff) - threshold;
+    final Double supLimDiff = utilization - average + threshold;
+    final Double infLimDiff = utilization - average - threshold;
+    final long bytes2SupLim = (long) (Math.abs(supLimDiff) * capacity / 100);
+    final long bytes2InfLim = (long) (Math.abs(infLimDiff) * capacity / 100);
+    final String key = r.getDatanodeInfo().getDatanodeUuid() + ":" + t;
+    if (utilizationDiff > 0) {
+      if (thresholdDiff > 0) {
+        final long weightBasedBytes = (long) (bytes2InfLim * (1 - weightMap.get(key)));
+        maxSize2Move = Math.max(bytes2SupLim + 1, weightBasedBytes);
+      }
+    } else {
+      if (thresholdDiff > 0) {
+        final long weightBasedBytes = (long) (bytes2SupLim * weightMap.get(key));
+        maxSize2Move = Math.max(bytes2InfLim + 1, weightBasedBytes);
+      }
+    }
+    if (utilizationDiff < 0) {
+      maxSize2Move = Math.min(getRemaining(r, t), maxSize2Move);
+    }
+    return Math.min(maxSizeToMove, maxSize2Move);
+
   }
 
   private static long computeMaxSize2Move(final long capacity, final long remaining,

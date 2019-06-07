@@ -1213,11 +1213,6 @@ public class Dispatcher {
     if (!isGoodBlockCandidateForPlacementPolicy(source, target, block)) {
       return false;
     }
-
-    if (!isGoodBlockCandidateForAvailability(source, target, block)) {
-      return false;
-    }
-
     return true;
   }
 
@@ -1233,28 +1228,6 @@ public class Dispatcher {
     }
     return placementPolicy.isMovable(
         datanodeInfos, source.getDatanodeInfo(), target.getDatanodeInfo());
-  }
-
-  private boolean isGoodBlockCandidateForAvailability(StorageGroup source,
-     StorageGroup target, DBlock block) {
-    final Map<String, Integer> rackMap = new HashMap<>();
-    for (StorageGroup blockLocation : block.getLocations()) {
-      final String rackName = blockLocation.getDatanodeInfo().getNetworkLocation();
-      if (rackMap.get(rackName) == null) {
-        rackMap.put(rackName, 0);
-      }
-      rackMap.put(rackName, rackMap.get(rackName) + 1);
-    }
-    final Integer numOfClusterRacks = cluster.getNumOfRacks();
-    final Integer numOfBlockReplicas = block.getLocations().size();
-    final Integer numOfBlockRacks = rackMap.keySet().size();
-    if (numOfBlockRacks == numOfClusterRacks || numOfBlockRacks == numOfBlockReplicas)
-	return true;
-
-    final Integer replicasOnSourceRack = rackMap.get(source.getDatanodeInfo().getNetworkLocation());
-    if (replicasOnSourceRack > 1 && !rackMap.keySet().contains(target.getDatanodeInfo().getNetworkLocation()))
-    	return true;
-    return false;
   }
 
   /** Reset all fields in order to prepare for the next iteration */
