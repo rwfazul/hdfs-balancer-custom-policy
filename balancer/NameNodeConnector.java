@@ -185,6 +185,11 @@ public class NameNodeConnector implements Closeable {
       throws IOException {
     return client.getDatanodeStorageReport(DatanodeReportType.LIVE);
   }
+  
+  public DatanodeStorageReport[] getDeadDatanodeStorageReport() 
+  	  throws IOException {
+	return client.getDatanodeStorageReport(DatanodeReportType.DEAD);
+  }
 
   /** @return the key manager */
   public KeyManager getKeyManager() {

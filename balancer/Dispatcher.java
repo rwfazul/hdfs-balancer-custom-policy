@@ -1024,6 +1024,28 @@ public class Dispatcher {
     }
     return trimmed;
   }
+  
+  public List<DatanodeStorageReport> getDeadDatanodeStorageReports() {
+    DatanodeStorageReport[] reports;
+	try {
+		reports = nnc.getDeadDatanodeStorageReport();
+	} catch (IOException e) {
+		e.printStackTrace();
+		return null;
+	}
+    final List<DatanodeStorageReport> trimmed = new ArrayList<DatanodeStorageReport>(); 
+    // create network topology and classify utilization collections:
+    // over-utilized, above-average, below-average and under-utilized.
+    for (DatanodeStorageReport r : DFSUtil.shuffle(reports)) {
+      final DatanodeInfo datanode = r.getDatanodeInfo();
+      if (shouldIgnore(datanode)) {
+        continue;
+      }
+      trimmed.add(r);
+      cluster.add(datanode);
+    }
+    return trimmed;
+  }
 
   public DDatanode newDatanode(DatanodeInfo datanode) {
     return new DDatanode(datanode, maxConcurrentMovesPerNode);
