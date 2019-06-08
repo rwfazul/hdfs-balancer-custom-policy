@@ -426,11 +426,12 @@ public class Balancer {
 		deadDatanodeMap.put(dnRackName, deadDatanodeMap.get(dnRackName) + 1);		
 	}	
 	
-	for (String rack: liveDatanodeMap.keySet()) {
+	for (Map.Entry<String, Integer> entry : liveDatanodeMap.entrySet()) {
+		String rack = entry.getKey();
 		Double calculedReliability = 1.0;
 		if (deadDatanodeMap.containsKey(rack))
-			calculedReliability = (double) (deadDatanodeMap.get(rack) / liveDatanodeMap.get(rack));
-		LOG.info("********** RackName= " + rack + ", r: " + calculedReliability);
+			calculedReliability -= ((double) deadDatanodeMap.get(rack) / entry.getValue());
+		LOG.info("********** RackName= " + rack + ", calcRel: " + calculedReliability + "(1 - (" + deadDatanodeMap.get(rack) + " / " + entry.getValue() + "))");
 		rackReliabilityMap.put(rack, calculedReliability);
 	}
   }
