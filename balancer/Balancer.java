@@ -430,8 +430,7 @@ public class Balancer {
 		String rack = entry.getKey();
 		Double calculedReliability = 1.0;
 		if (deadDatanodeMap.containsKey(rack))
-			calculedReliability -= ((double) deadDatanodeMap.get(rack) / entry.getValue());
-		LOG.info("********** RackName= " + rack + ", calcRel: " + calculedReliability + "(1 - (" + deadDatanodeMap.get(rack) + " / " + entry.getValue() + "))");
+			calculedReliability -= ((double) deadDatanodeMap.get(rack) / entry.getValue() + deadDatanodeMap.get(rack));
 		rackReliabilityMap.put(rack, calculedReliability);
 	}
   }
