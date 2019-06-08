@@ -412,11 +412,10 @@ public class Balancer {
     final Map<StorageType, LinkedList<Long>> capacityMap = new HashMap<>();
     for(DatanodeStorageReport r : reports) {
       for(StorageType t : StorageType.getMovableTypes()) {
-        final Double utilization = policy.getUtilization(r, t);
-        if (utilization == null) { // datanode does not have such storage type 
+        final long capacity = getCapacity(r, t);
+        if (capacity == 0L) { // datanode does not have such storage type 
           continue;
         }
-        final long capacity = getCapacity(r, t);
         if (!capacityMap.containsKey(t)) {
           capacityMap.put(t, new LinkedList<Long>());
         }
@@ -425,9 +424,13 @@ public class Balancer {
     }
     for(DatanodeStorageReport r : reports) {
       for(StorageType t : StorageType.getMovableTypes()) {
+	final long capacity = getCapacity(r, t);
+        if (capacity == 0L) { // datanode does not have such storage type 
+          continue;
+        }
         final long max = Collections.max(capacityMap.get(t));
         final long min = Collections.min(capacityMap.get(t));
-        final double weight = (getCapacity(r, t) - min) / (max - min);
+        final double weight = (double) (capacity - min) / (max - min);
         final String key = r.getDatanodeInfo().getDatanodeUuid() + ":" + t;
         weightMap.put(key, weight);
       }
