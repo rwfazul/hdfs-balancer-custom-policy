@@ -428,10 +428,10 @@ public class Balancer {
 	
 	for (Map.Entry<String, Integer> entry : liveDatanodeMap.entrySet()) {
 		String rack = entry.getKey();
-		Double calculedReliability = 1.0;
+		Double calculatedReliability = 1.0;
 		if (deadDatanodeMap.containsKey(rack))
-			calculedReliability -= ((double) deadDatanodeMap.get(rack) / entry.getValue() + deadDatanodeMap.get(rack));
-		rackReliabilityMap.put(rack, calculedReliability);
+			calculatedReliability -= ((double) deadDatanodeMap.get(rack) / (entry.getValue() + deadDatanodeMap.get(rack)));
+		rackReliabilityMap.put(rack, calculatedReliability);
 	}
   }
   
