@@ -441,21 +441,19 @@ public class Balancer {
       final long capacity, final Double utilization, final double average, long maxSize2Move) {
     final double utilizationDiff = utilization - average;
     final double thresholdDiff = Math.abs(utilizationDiff) - threshold;
-    final Double supLimDiff = utilization - average + threshold;
-    final Double infLimDiff = utilization - average - threshold;
+    if (thresholdDiff <= 0) // over or under
+	return maxSize2Move;
+    final Double supLimDiff = utilization - (average + threshold);
+    final Double infLimDiff = utilization - (average - threshold);
     final long bytes2SupLim = (long) (Math.abs(supLimDiff) * capacity / 100);
     final long bytes2InfLim = (long) (Math.abs(infLimDiff) * capacity / 100);
     final String key = r.getDatanodeInfo().getDatanodeUuid() + ":" + t;
-    if (utilizationDiff > 0) {
-      if (thresholdDiff > 0) {
+    if (utilizationDiff > 0) { // source
         final long weightBasedBytes = (long) (bytes2InfLim * (1 - weightMap.get(key)));
-        maxSize2Move = Math.max(bytes2SupLim + 1, weightBasedBytes);
-      }
-    } else {
-      if (thresholdDiff > 0) {
+        maxSize2Move = Math.max(bytes2SupLim + 1, weightBasedBytes - 1);
+    } else {                   // target
         final long weightBasedBytes = (long) (bytes2SupLim * weightMap.get(key));
-        maxSize2Move = Math.max(bytes2InfLim + 1, weightBasedBytes);
-      }
+        maxSize2Move = Math.max(bytes2InfLim + 1, weightBasedBytes - 1);
     }
     if (utilizationDiff < 0) {
       maxSize2Move = Math.min(getRemaining(r, t), maxSize2Move);
