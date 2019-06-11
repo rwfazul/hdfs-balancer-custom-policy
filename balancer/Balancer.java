@@ -436,30 +436,43 @@ public class Balancer {
       }
     }
   }
-
+    
   private long recalcMaxSize2Move(final DatanodeStorageReport r, final StorageType t, 
       final long capacity, final Double utilization, final double average, long maxSize2Move) {
     final double utilizationDiff = utilization - average;
     final double thresholdDiff = Math.abs(utilizationDiff) - threshold;
-    if (thresholdDiff <= 0) // over or under
-	return maxSize2Move;
     final Double supLimDiff = utilization - (average + threshold);
     final Double infLimDiff = utilization - (average - threshold);
     final long bytes2SupLim = (long) (Math.abs(supLimDiff) * capacity / 100);
     final long bytes2InfLim = (long) (Math.abs(infLimDiff) * capacity / 100);
     final String key = r.getDatanodeInfo().getDatanodeUuid() + ":" + t;
-    if (utilizationDiff > 0) { // source
-        final long weightBasedBytes = (long) (bytes2InfLim * (1 - weightMap.get(key)));
+    if (utilizationDiff > 0) {  // source
+      if (thresholdDiff <= 0) { // aboveAvg
+        long weightBasedBytes = (long) ((bytes2SupLim + bytes2InfLim) * (1 - weightMap.get(key)));
+        if ( (((average - threshold) * capacity / 100) + weightBasedBytes) >= (utilization * capacity / 100) )
+          maxSize2Move = Math.max(0, weightBasedBytes - bytes2SupLim);
+	else
+          maxSize2Move = 0;
+      } else {                  // over	
+        long weightBasedBytes = (long) (bytes2InfLim * (1 - weightMap.get(key)));
         maxSize2Move = Math.max(bytes2SupLim + 1, weightBasedBytes - 1);
-    } else {                   // target
+      }
+    } else {                    // target
+      if (thresholdDiff <= 0) { // belowAvg
+        long weightBasedBytes = (long) ((bytes2SupLim + bytes2InfLim) * weightMap.get(key));
+        if ( (((average - threshold) * capacity / 100) + weightBasedBytes) >= (utilization * capacity / 100) )
+          maxSize2Move = Math.max(0, weightBasedBytes - bytes2InfLim);
+	else
+          maxSize2Move = 0;		
+      } else {                  // under
         final long weightBasedBytes = (long) (bytes2SupLim * weightMap.get(key));
         maxSize2Move = Math.max(bytes2InfLim + 1, weightBasedBytes - 1);
+      }
     }
     if (utilizationDiff < 0) {
       maxSize2Move = Math.min(getRemaining(r, t), maxSize2Move);
     }
     return Math.min(maxSizeToMove, maxSize2Move);
-
   }
 
   private static long computeMaxSize2Move(final long capacity, final long remaining,
