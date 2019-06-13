@@ -425,7 +425,7 @@ public class Balancer {
       }
       deadDatanodeMap.put(dnRackName, deadDatanodeMap.get(dnRackName) + 1);		
     }		
-	  final Map<String, Integer> failureRateMap = new HashMap<>();
+    final Map<String, Double> failureRateMap = new HashMap<>();
     for (Map.Entry<String, Integer> entry : liveDatanodeMap.entrySet()) {
         String rack = entry.getKey();
         Double failureRate = 0.0;
@@ -435,8 +435,8 @@ public class Balancer {
     }
     for (Map.Entry<String, Integer> entry : liveDatanodeMap.entrySet()) {
       String rack = entry.getKey();
-      final long max = Collections.max(failureRateMap.values());
-      final long min = Collections.min(failureRateMap.values());
+      final double max = Collections.max(failureRateMap.values());
+      final double min = Collections.min(failureRateMap.values());
       Double calculatedReliability = 1.0;
       if (max != 0.0)
         calculatedReliability = calculatedReliability - ((double) (failureRateMap.get(rack) - min) / (max - min));     
