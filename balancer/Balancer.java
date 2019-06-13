@@ -409,32 +409,41 @@ public class Balancer {
   }
 
   private void computeRackReliability(final List<DatanodeStorageReport> reports) {
-	final Map<String, Integer> liveDatanodeMap = new HashMap<>(); 
-	final Map<String, Integer> deadDatanodeMap = new HashMap<>();
-	for (DatanodeStorageReport r : reports) {
-		final String dnRackName = r.getDatanodeInfo().getNetworkLocation();
-		if (!liveDatanodeMap.containsKey(dnRackName)) {
-			liveDatanodeMap.put(dnRackName, 0);
-		}
-		liveDatanodeMap.put(dnRackName, liveDatanodeMap.get(dnRackName) + 1);
-	}
-	for (DatanodeStorageReport r : dispatcher.getDeadDatanodeStorageReports()) {
-		final String dnRackName = r.getDatanodeInfo().getNetworkLocation();
-		if (!deadDatanodeMap.containsKey(dnRackName)) {
-			deadDatanodeMap.put(dnRackName, 0);
-		}
-		deadDatanodeMap.put(dnRackName, deadDatanodeMap.get(dnRackName) + 1);		
-	}	
-	
-	for (Map.Entry<String, Integer> entry : liveDatanodeMap.entrySet()) {
-		String rack = entry.getKey();
-		Double calculatedReliability = 1.0;
-		if (deadDatanodeMap.containsKey(rack))
-			calculatedReliability -= ((double) deadDatanodeMap.get(rack) / (entry.getValue() + deadDatanodeMap.get(rack)));
-		rackReliabilityMap.put(rack, calculatedReliability);
-	}
+    final Map<String, Integer> liveDatanodeMap = new HashMap<>(); 
+    final Map<String, Integer> deadDatanodeMap = new HashMap<>();
+    for (DatanodeStorageReport r : reports) {
+      final String dnRackName = r.getDatanodeInfo().getNetworkLocation();
+      if (!liveDatanodeMap.containsKey(dnRackName)) {
+        liveDatanodeMap.put(dnRackName, 0);
+      }
+      liveDatanodeMap.put(dnRackName, liveDatanodeMap.get(dnRackName) + 1);
+    }
+    for (DatanodeStorageReport r : dispatcher.getDeadDatanodeStorageReports()) {
+      final String dnRackName = r.getDatanodeInfo().getNetworkLocation();
+      if (!deadDatanodeMap.containsKey(dnRackName)) {
+        deadDatanodeMap.put(dnRackName, 0);
+      }
+      deadDatanodeMap.put(dnRackName, deadDatanodeMap.get(dnRackName) + 1);		
+    }		
+	  final Map<String, Integer> failureRateMap = new HashMap<>();
+    for (Map.Entry<String, Integer> entry : liveDatanodeMap.entrySet()) {
+        String rack = entry.getKey();
+        Double failureRate = 0.0;
+        if (deadDatanodeMap.containsKey(rack))
+          failureRate = (double) deadDatanodeMap.get(rack) / (entry.getValue() + deadDatanodeMap.get(rack));
+        failureRateMap.put(rack, failureRate);
+    }
+    for (Map.Entry<String, Integer> entry : liveDatanodeMap.entrySet()) {
+      String rack = entry.getKey();
+      final long max = Collections.max(failureRateMap.values());
+      final long min = Collections.min(failureRateMap.values());
+      Double calculatedReliability = 1.0;
+      if (max != 0.0)
+        calculatedReliability = calculatedReliability - ((double) (failureRateMap.get(rack) - min) / (max - min));     
+      rackReliabilityMap.put(rack, calculatedReliability);
+    }
   }
-  
+
   private long recalcMaxSize2Move(final DatanodeStorageReport r, final StorageType t, 
       final long capacity, final Double utilization, final double average, long maxSize2Move) {
     final double utilizationDiff = utilization - average;
@@ -446,28 +455,20 @@ public class Balancer {
     final String key = r.getDatanodeInfo().getNetworkLocation();
     if (utilizationDiff > 0) {  // source
       if (thresholdDiff <= 0) { // aboveAvg
-        long weightBasedBytes = (long) ((bytes2SupLim + bytes2InfLim) * (1 - rackReliabilityMap.get(key)));
-        if ( (((average - threshold) * capacity / 100) + weightBasedBytes) >= (utilization * capacity / 100) )
-          maxSize2Move = Math.max(0, weightBasedBytes - bytes2SupLim);
-	else
-          maxSize2Move = 0;
+        long weightBasedBytes = (long) ((bytes2InfLim + bytes2SupLim) * (1 - rackReliabilityMap.get(key)));
+        maxSize2Move = Math.max(0, weightBasedBytes - bytes2SupLim);
       } else {                  // over	
         long weightBasedBytes = (long) (bytes2InfLim * (1 - rackReliabilityMap.get(key)));
-        maxSize2Move = Math.max(bytes2SupLim + 1, weightBasedBytes - 1);
+        maxSize2Move = Math.max(bytes2SupLim, weightBasedBytes);
       }
     } else {                    // target
       if (thresholdDiff <= 0) { // belowAvg
-        long weightBasedBytes = (long) ((bytes2SupLim + bytes2InfLim) * rackReliabilityMap.get(key));
-        if ( (((average - threshold) * capacity / 100) + weightBasedBytes) >= (utilization * capacity / 100) )
-          maxSize2Move = Math.max(0, weightBasedBytes - bytes2InfLim);
-	else
-          maxSize2Move = 0;		
+        long weightBasedBytes = (long) ((bytes2InfLim + bytes2SupLim) * rackReliabilityMap.get(key));
+        maxSize2Move = Math.max(0, weightBasedBytes - bytes2InfLim);		
       } else {                  // under
         final long weightBasedBytes = (long) (bytes2SupLim * rackReliabilityMap.get(key));
-        maxSize2Move = Math.max(bytes2InfLim + 1, weightBasedBytes - 1);
+        maxSize2Move = Math.max(bytes2InfLim, weightBasedBytes);
       }
-    }
-    if (utilizationDiff < 0) {
       maxSize2Move = Math.min(getRemaining(r, t), maxSize2Move);
     }
     return Math.min(maxSizeToMove, maxSize2Move);
