@@ -424,7 +424,7 @@ public class Balancer {
     }
     for(DatanodeStorageReport r : reports) {
       for(StorageType t : StorageType.getMovableTypes()) {
-	final long capacity = getCapacity(r, t);
+        final long capacity = getCapacity(r, t);
         if (capacity == 0L) { // datanode does not have such storage type 
           continue;
         }
@@ -457,7 +457,7 @@ public class Balancer {
     } else {                    // target
       if (thresholdDiff <= 0) { // belowAvg
         long weightBasedBytes = (long) ((bytes2InfLim + bytes2SupLim) * weightMap.get(key));
-          maxSize2Move = Math.max(0, weightBasedBytes - bytes2InfLim);		
+        maxSize2Move = Math.max(0, weightBasedBytes - bytes2InfLim);		
       } else {                  // under
         final long weightBasedBytes = (long) (bytes2SupLim * weightMap.get(key));
         maxSize2Move = Math.max(bytes2InfLim, weightBasedBytes);
