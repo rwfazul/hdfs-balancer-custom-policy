@@ -430,7 +430,9 @@ public class Balancer {
         }
         final long max = Collections.max(capacityMap.get(t));
         final long min = Collections.min(capacityMap.get(t));
-        final double weight = (double) (capacity - min) / (max - min);
+        double weight = 0.5;
+        if ((max - min) != 0)
+          weight = (double) (capacity - min) / (max - min);
         final String key = r.getDatanodeInfo().getDatanodeUuid() + ":" + t;
         weightMap.put(key, weight);
       }
