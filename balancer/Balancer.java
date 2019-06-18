@@ -371,9 +371,7 @@ public class Balancer {
         final double utilizationDiff = utilization - average;
         final long capacity = getCapacity(r, t);
         final double thresholdDiff = Math.abs(utilizationDiff) - threshold;
-        long maxSize2Move = computeMaxSize2Move(capacity,
-            getRemaining(r, t), utilizationDiff, maxSizeToMove);
-        maxSize2Move = recalcMaxSize2Move(r, t, capacity, utilization, average, maxSize2Move);
+        final long maxSize2Move = recalcMaxSize2Move(r, t, capacity, utilization, average);
         final StorageGroup g;
         if (utilizationDiff > 0) {
           final Source s = dn.addSource(t, maxSize2Move, dispatcher);
@@ -409,43 +407,35 @@ public class Balancer {
   }
 
   private void computeWeight(final List<DatanodeStorageReport> reports) {
-    final Map<StorageType, LinkedList<Long>> capacityMap = new HashMap<>();
+    final Map<String, Integer> capacityMap = new HashMap<>();
     for(DatanodeStorageReport r : reports) {
-      for(StorageType t : StorageType.getMovableTypes()) {
-        final long capacity = getCapacity(r, t);
-        if (capacity == 0L) { // datanode does not have such storage type 
-          continue;
-        }
-        if (!capacityMap.containsKey(t)) {
-          capacityMap.put(t, new LinkedList<Long>());
-        }
-        capacityMap.get(t).add(capacity);
-      }
+        final String key = r.getDatanodeInfo().getDatanodeUuid();
+        final int capacity = r.getDatanodeInfo().getXceiverCount();
+        capacityMap.put(key, capacity);
     }
     for(DatanodeStorageReport r : reports) {
-      for(StorageType t : StorageType.getMovableTypes()) {
-	final long capacity = getCapacity(r, t);
-        if (capacity == 0L) { // datanode does not have such storage type 
-          continue;
-        }
-        final long max = Collections.max(capacityMap.get(t));
-        final long min = Collections.min(capacityMap.get(t));
+        final long max = Collections.max(capacityMap.values());
+        final long min = Collections.min(capacityMap.values());
+	LOG.info("*** Min: " + min + ", Max: " + max + " ");
+        final String key = r.getDatanodeInfo().getDatanodeUuid();
+	final int capacity = capacityMap.get(key);
+        LOG.info("*** DN: " + key + ", hostname: " + r.getDatanodeInfo().getHostName() + ", ipaddress: " + r.getDatanodeInfo().getIpAddr() +  ", xceiverCount: " + capacity);
         final double weight = (double) (capacity - min) / (max - min);
-        final String key = r.getDatanodeInfo().getDatanodeUuid() + ":" + t;
         weightMap.put(key, weight);
-      }
     }
   }
     
   private long recalcMaxSize2Move(final DatanodeStorageReport r, final StorageType t, 
-      final long capacity, final Double utilization, final double average, long maxSize2Move) {
+      final long capacity, final Double utilization, final double average) {
     final double utilizationDiff = utilization - average;
     final double thresholdDiff = Math.abs(utilizationDiff) - threshold;
     final Double supLimDiff = utilization - (average + threshold);
     final Double infLimDiff = utilization - (average - threshold);
     final long bytes2SupLim = (long) (Math.abs(supLimDiff) * capacity / 100);
     final long bytes2InfLim = (long) (Math.abs(infLimDiff) * capacity / 100);
-    final String key = r.getDatanodeInfo().getDatanodeUuid() + ":" + t;
+    long maxSize2Move = 0;
+    final String key = r.getDatanodeInfo().getDatanodeUuid();
+    LOG.info("*** DN: " + key + ", hostname: " + r.getDatanodeInfo().getHostName() + ", ipaddress: " + r.getDatanodeInfo().getIpAddr() +  ", weightMap: " + weightMap.get(key));
     if (utilizationDiff > 0) {  // source
       if (thresholdDiff <= 0) { // aboveAvg
         long weightBasedBytes = (long) ((bytes2SupLim + bytes2InfLim) * (1 - weightMap.get(key)));
