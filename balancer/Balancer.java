@@ -371,9 +371,7 @@ public class Balancer {
         final double utilizationDiff = utilization - average;
         final long capacity = getCapacity(r, t);
         final double thresholdDiff = Math.abs(utilizationDiff) - threshold;
-        long maxSize2Move = computeMaxSize2Move(capacity,
-            getRemaining(r, t), utilizationDiff, maxSizeToMove);
-        maxSize2Move = recalcMaxSize2Move(r, t, capacity, utilization, average, maxSize2Move);
+        final long maxSize2Move = recalcMaxSize2Move(r, t, capacity, utilization, average);
         final StorageGroup g;
         if (utilizationDiff > 0) {
           final Source s = dn.addSource(t, maxSize2Move, dispatcher);
@@ -458,22 +456,22 @@ public class Balancer {
     long maxSize2Move = 0;
     if (utilizationDiff > 0) {  // source
       if (thresholdDiff <= 0) { // aboveAvg
-        long weightBasedBytes = (long) ((bytes2InfLim + bytes2SupLim) * (1 - weightMap.get(key)));
-	LOG.info("***ABOVE GRUPO: " + key + ", weightBasedBytes = (" + bytes2InfLim + " + " + bytes2SupLim + ") * (1 - " + weightMap.get(key) +") -> - " + bytes2SupLim +" = "+(weightBasedBytes - bytes2SupLim));
+        long weightBasedBytes = (long) ((bytes2InfLim + bytes2SupLim) * (1 - rackReliabilityMap.get(key)));
+	LOG.info("***ABOVE GRUPO: " + key + ", weightBasedBytes = (" + bytes2InfLim + " + " + bytes2SupLim + ") * (1 - " + rackReliabilityMap.get(key) +") -> - " + bytes2SupLim +" = "+(weightBasedBytes - bytes2SupLim));
         maxSize2Move = Math.max(0, weightBasedBytes - bytes2SupLim);
       } else {                  // over	
-        long weightBasedBytes = (long) (bytes2InfLim * (1 - weightMap.get(key)));
-        LOG.info("***OVER GRUPO: " + key + ", weightBasedBytes = " + bytes2InfLim + " * (1 - " + weightMap.get(key) + ") -> max " + bytes2SupLim +", "+  weightBasedBytes);
+        long weightBasedBytes = (long) (bytes2InfLim * (1 - rackReliabilityMap.get(key)));
+        LOG.info("***OVER GRUPO: " + key + ", weightBasedBytes = " + bytes2InfLim + " * (1 - " + rackReliabilityMap.get(key) + ") -> max " + bytes2SupLim +", "+  weightBasedBytes);
         maxSize2Move = Math.max(bytes2SupLim, weightBasedBytes);
       }
     } else {                    // target
       if (thresholdDiff <= 0) { // belowAvg
-        long weightBasedBytes = (long) ((bytes2InfLim + bytes2SupLim) * weightMap.get(key));
-	LOG.info("***BELOW GRUPO: " + key + ", weightBasedBytes = (" + bytes2InfLim + " + " + bytes2SupLim + ") * " + weightMap.get(key) + " -> - " + bytes2InfLim +" = "+(weightBasedBytes - bytes2InfLim));
+        long weightBasedBytes = (long) ((bytes2InfLim + bytes2SupLim) * rackReliabilityMap.get(key));
+	LOG.info("***BELOW GRUPO: " + key + ", weightBasedBytes = (" + bytes2InfLim + " + " + bytes2SupLim + ") * " + rackReliabilityMap.get(key) + " -> - " + bytes2InfLim +" = "+(weightBasedBytes - bytes2InfLim));
         maxSize2Move = Math.max(0, weightBasedBytes - bytes2InfLim);		
       } else {                  // under
-        final long weightBasedBytes = (long) (bytes2SupLim * weightMap.get(key));
-        LOG.info("***UNDER GRUPO: " + key + ", weightBasedBytes = " + bytes2SupLim +" * " + weightMap.get(key) + " -> max " + bytes2InfLim +", "+  weightBasedBytes);
+        final long weightBasedBytes = (long) (bytes2SupLim * rackReliabilityMap.get(key));
+        LOG.info("***UNDER GRUPO: " + key + ", weightBasedBytes = " + bytes2SupLim +" * " + rackReliabilityMap.get(key) + " -> max " + bytes2InfLim +", "+  weightBasedBytes);
         maxSize2Move = Math.max(bytes2InfLim, weightBasedBytes);
       }
       LOG.info("***SOURCE: min " + getRemaining(r, t) +", "+ maxSize2Move);
