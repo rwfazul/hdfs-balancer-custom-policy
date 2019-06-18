@@ -27,6 +27,7 @@ import java.text.DateFormat;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -215,7 +216,7 @@ public class Balancer {
   private final Collection<StorageGroup> underUtilized
       = new LinkedList<StorageGroup>();
 
-  private final Map<String, Double> weightMap = new HashMap<>();
+  private final Map<String, Double> loadMap = new HashMap<>();
 
   /* Check that this Balancer is compatible with the Block Placement Policy
    * used by the Namenode.
@@ -347,7 +348,7 @@ public class Balancer {
       policy.accumulateSpaces(r);
     }
     policy.initAvgUtilization();
-    computeWeight(reports);
+
     // create network topology and classify utilization collections: 
     //   over-utilized, above-average, below-average and under-utilized.
     long overLoadedBytes = 0L, underLoadedBytes = 0L;
@@ -372,6 +373,7 @@ public class Balancer {
         final long capacity = getCapacity(r, t);
         final double thresholdDiff = Math.abs(utilizationDiff) - threshold;
         final long maxSize2Move = recalcMaxSize2Move(r, t, capacity, utilization, average);
+
         final StorageGroup g;
         if (utilizationDiff > 0) {
           final Source s = dn.addSource(t, maxSize2Move, dispatcher);
@@ -394,7 +396,7 @@ public class Balancer {
         dispatcher.getStorageGroupMap().put(g);
       }
     }
-
+    orderStorageGroupLists();
     logUtilizationCollections();
     
     Preconditions.checkState(dispatcher.getStorageGroupMap().size()
@@ -421,46 +423,35 @@ public class Balancer {
 	final int capacity = capacityMap.get(key);
         LOG.info("*** DN: " + key + ", hostname: " + r.getDatanodeInfo().getHostName() + ", ipaddress: " + r.getDatanodeInfo().getIpAddr() +  ", xceiverCount: " + capacity);
         final double weight = (double) (capacity - min) / (max - min);
-        weightMap.put(key, weight);
+        loadMap.put(key, weight);
     }
   }
-    
+
+  private long calcMinSize2Move(final long capacity, final Double utilization, final double average) {
+    final double utilizationDiff = utilization - average;
+    final double thresholdDiff = Math.abs(utilizationDiff) - threshold;
+    if (thresholdDiff <= 0) // aboveAvg and belowAvg
+	return 0;
+    if (utilizationDiff > 0) {  // over
+      final Double supLimDiff = utilization - (average + threshold);
+      return (long) (Math.abs(supLimDiff) * capacity / 100);
+    } else { // under
+      final Double infLimDiff = utilization - (average - threshold);
+      return (long) (Math.abs(infLimDiff) * capacity / 100);
+    }
+  }
+  
   private long recalcMaxSize2Move(final DatanodeStorageReport r, final StorageType t, 
       final long capacity, final Double utilization, final double average) {
     final double utilizationDiff = utilization - average;
-    final double thresholdDiff = Math.abs(utilizationDiff) - threshold;
-    final Double supLimDiff = utilization - (average + threshold);
-    final Double infLimDiff = utilization - (average - threshold);
-    final long bytes2SupLim = (long) (Math.abs(supLimDiff) * capacity / 100);
-    final long bytes2InfLim = (long) (Math.abs(infLimDiff) * capacity / 100);
-    long maxSize2Move = 0;
     final String key = r.getDatanodeInfo().getDatanodeUuid();
-    LOG.info("*** DN: " + key + ", hostname: " + r.getDatanodeInfo().getHostName() + ", ipaddress: " + r.getDatanodeInfo().getIpAddr() +  ", weightMap: " + weightMap.get(key));
-    if (utilizationDiff > 0) {  // source
-      if (thresholdDiff <= 0) { // aboveAvg
-        long weightBasedBytes = (long) ((bytes2SupLim + bytes2InfLim) * (1 - weightMap.get(key)));
-        if ( (((average - threshold) * capacity / 100) + weightBasedBytes) >= (utilization * capacity / 100) )
-          maxSize2Move = Math.max(0, weightBasedBytes - bytes2SupLim);
-	else
-          maxSize2Move = 0;
-      } else {                  // over	
-        long weightBasedBytes = (long) (bytes2InfLim * (1 - weightMap.get(key)));
-        maxSize2Move = Math.max(bytes2SupLim + 1, weightBasedBytes - 1);
-      }
-    } else {                    // target
-      if (thresholdDiff <= 0) { // belowAvg
-        long weightBasedBytes = (long) ((bytes2SupLim + bytes2InfLim) * weightMap.get(key));
-        if ( (((average - threshold) * capacity / 100) + weightBasedBytes) >= (utilization * capacity / 100) )
-          maxSize2Move = Math.max(0, weightBasedBytes - bytes2InfLim);
-	else
-          maxSize2Move = 0;		
-      } else {                  // under
-        final long weightBasedBytes = (long) (bytes2SupLim * weightMap.get(key));
-        maxSize2Move = Math.max(bytes2InfLim + 1, weightBasedBytes - 1);
-      }
-    }
+    LOG.info("*** DN: " + key + ", hostname: " + r.getDatanodeInfo().getHostName() + ", ipaddress: " + r.getDatanodeInfo().getIpAddr() +  ", loadMap: " + loadMap.get(key));
+    final long minSize2Move = calcMinSize2Move(capacity, utilization, average);
+    final long bytes2Avg =  (long) (Math.abs(utilizationDiff) * capacity / 100);
+    final long loadBasedBytes = (long) ((bytes2Avg - minSize2Move) * (1 - loadMap.get(key)));
+    long maxSize2Move = loadBasedBytes + minSize2Move;
     if (utilizationDiff < 0) {
-      maxSize2Move = Math.min(getRemaining(r, t), maxSize2Move);
+      maxSize2Move = Math.min(getRemaining(r,t), maxSizeToMove);
     }
     return Math.min(maxSizeToMove, maxSize2Move);
   }
@@ -613,6 +604,50 @@ public class Balancer {
     return left.getStorageType() == right.getStorageType()
         && matcher.match(dispatcher.getCluster(),
             left.getDatanodeInfo(), right.getDatanodeInfo());
+  }
+
+  private void orderStorageGroupLists() {
+    LOG.info("*** lists before order ***");
+    printStorageGroupList(overUtilized, "overUtilized");
+    printStorageGroupList(aboveAvgUtilized, "aboveAvgUtilized");
+    printStorageGroupList(belowAvgUtilized, "belowAvgUtilized");
+    printStorageGroupList(underUtilized, "underAvgUtilized");
+    Comparator<StorageGroup> comparatorAscending = new Comparator<StorageGroup>() {
+      @Override
+      public int compare(StorageGroup left, StorageGroup right) {
+        return Long.compare(
+          left.getDatanodeInfo().getNonDfsUsed(), right.getDatanodeInfo().getNonDfsUsed()
+        );
+      }
+    };
+    Comparator<StorageGroup> comparatorDescending = new Comparator<StorageGroup>() {
+      @Override
+      public int compare(StorageGroup left, StorageGroup right) {
+        return Long.compare(
+          right.getDatanodeInfo().getNonDfsUsed(), left.getDatanodeInfo().getNonDfsUsed()
+        );
+      }
+    };
+    Collections.sort((LinkedList<Source>) overUtilized, comparatorAscending);
+    Collections.sort((LinkedList<Source>) aboveAvgUtilized, comparatorAscending);
+    Collections.sort((LinkedList<StorageGroup>) belowAvgUtilized, comparatorDescending);
+    Collections.sort((LinkedList<StorageGroup>) underUtilized, comparatorDescending);
+    LOG.info("*** lists after order ***");
+    printStorageGroupList(overUtilized, "overUtilized");
+    printStorageGroupList(aboveAvgUtilized, "aboveAvgUtilized");
+    printStorageGroupList(belowAvgUtilized, "belowAvgUtilized");
+    printStorageGroupList(underUtilized, "underAvgUtilized");
+  }
+  
+  private <T extends StorageGroup> void printStorageGroupList(Collection<T> list, String name) {
+    LOG.info(name + " {");
+    for (T t: list) { 
+        LOG.info("[ Host: " + t.getDisplayName() + 
+        		 ", Capacity: " + t.getDatanodeInfo().getCapacity() + 
+        		 ", dfsUsed: " +  t.getDatanodeInfo().getDfsUsed() + 
+        		 ", nonDfsUsed: " + t.getDatanodeInfo().getNonDfsUsed() + " ]");
+      }
+    LOG.info("}");
   }
 
   /* reset all fields in a balancer preparing for the next iteration */
