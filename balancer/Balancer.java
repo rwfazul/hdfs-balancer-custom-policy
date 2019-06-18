@@ -431,21 +431,23 @@ public class Balancer {
         Double failureRate = 0.0;
         if (deadDatanodeMap.containsKey(rack))
           failureRate = (double) deadDatanodeMap.get(rack) / (entry.getValue() + deadDatanodeMap.get(rack));
+	LOG.info("*BAL* rack " + rack + ", failure rate: " + failureRate);
         failureRateMap.put(rack, failureRate);
     }
     for (Map.Entry<String, Integer> entry : liveDatanodeMap.entrySet()) {
       String rack = entry.getKey();
       final double max = Collections.max(failureRateMap.values());
       final double min = Collections.min(failureRateMap.values());
-      Double calculatedReliability = 1.0;
+      Double calculatedReliability = 0.5;
       if (max != 0.0)
-        calculatedReliability = calculatedReliability - ((double) (failureRateMap.get(rack) - min) / (max - min));     
+        calculatedReliability = 1.0 - ((double) (failureRateMap.get(rack) - min) / (max - min));    
+      LOG.info("*BAL* min: " + min + ", max: " + max + ", rack: " + rack + ", rate: " +  failureRateMap.get(rack) + ", rel: "  + calculatedReliability);
       rackReliabilityMap.put(rack, calculatedReliability);
     }
   }
 
   private long recalcMaxSize2Move(final DatanodeStorageReport r, final StorageType t, 
-      final long capacity, final Double utilization, final double average, long maxSize2Move) {
+      final long capacity, final Double utilization, final double average) {
     final double utilizationDiff = utilization - average;
     final double thresholdDiff = Math.abs(utilizationDiff) - threshold;
     final Double supLimDiff = utilization - (average + threshold);
@@ -453,26 +455,33 @@ public class Balancer {
     final long bytes2SupLim = (long) (Math.abs(supLimDiff) * capacity / 100);
     final long bytes2InfLim = (long) (Math.abs(infLimDiff) * capacity / 100);
     final String key = r.getDatanodeInfo().getNetworkLocation();
+    long maxSize2Move = 0;
     if (utilizationDiff > 0) {  // source
       if (thresholdDiff <= 0) { // aboveAvg
-        long weightBasedBytes = (long) ((bytes2InfLim + bytes2SupLim) * (1 - rackReliabilityMap.get(key)));
+        long weightBasedBytes = (long) ((bytes2InfLim + bytes2SupLim) * (1 - weightMap.get(key)));
+	LOG.info("***ABOVE GRUPO: " + key + ", weightBasedBytes = (" + bytes2InfLim + " + " + bytes2SupLim + ") * (1 - " + weightMap.get(key) +") -> - " + bytes2SupLim +" = "+(weightBasedBytes - bytes2SupLim));
         maxSize2Move = Math.max(0, weightBasedBytes - bytes2SupLim);
       } else {                  // over	
-        long weightBasedBytes = (long) (bytes2InfLim * (1 - rackReliabilityMap.get(key)));
+        long weightBasedBytes = (long) (bytes2InfLim * (1 - weightMap.get(key)));
+        LOG.info("***OVER GRUPO: " + key + ", weightBasedBytes = " + bytes2InfLim + " * (1 - " + weightMap.get(key) + ") -> max " + bytes2SupLim +", "+  weightBasedBytes);
         maxSize2Move = Math.max(bytes2SupLim, weightBasedBytes);
       }
     } else {                    // target
       if (thresholdDiff <= 0) { // belowAvg
-        long weightBasedBytes = (long) ((bytes2InfLim + bytes2SupLim) * rackReliabilityMap.get(key));
+        long weightBasedBytes = (long) ((bytes2InfLim + bytes2SupLim) * weightMap.get(key));
+	LOG.info("***BELOW GRUPO: " + key + ", weightBasedBytes = (" + bytes2InfLim + " + " + bytes2SupLim + ") * " + weightMap.get(key) + " -> - " + bytes2InfLim +" = "+(weightBasedBytes - bytes2InfLim));
         maxSize2Move = Math.max(0, weightBasedBytes - bytes2InfLim);		
       } else {                  // under
-        final long weightBasedBytes = (long) (bytes2SupLim * rackReliabilityMap.get(key));
+        final long weightBasedBytes = (long) (bytes2SupLim * weightMap.get(key));
+        LOG.info("***UNDER GRUPO: " + key + ", weightBasedBytes = " + bytes2SupLim +" * " + weightMap.get(key) + " -> max " + bytes2InfLim +", "+  weightBasedBytes);
         maxSize2Move = Math.max(bytes2InfLim, weightBasedBytes);
       }
+      LOG.info("***SOURCE: min " + getRemaining(r, t) +", "+ maxSize2Move);
       maxSize2Move = Math.min(getRemaining(r, t), maxSize2Move);
     }
     return Math.min(maxSizeToMove, maxSize2Move);
   }
+
 
   private static long computeMaxSize2Move(final long capacity, final long remaining,
       final double utilizationDiff, final long max) {
