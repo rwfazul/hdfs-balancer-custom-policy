@@ -348,7 +348,7 @@ public class Balancer {
       policy.accumulateSpaces(r);
     }
     policy.initAvgUtilization();
-
+    computeWeight(reports);
     // create network topology and classify utilization collections: 
     //   over-utilized, above-average, below-average and under-utilized.
     long overLoadedBytes = 0L, underLoadedBytes = 0L;
@@ -373,7 +373,7 @@ public class Balancer {
         final long capacity = getCapacity(r, t);
         final double thresholdDiff = Math.abs(utilizationDiff) - threshold;
         final long maxSize2Move = recalcMaxSize2Move(r, t, capacity, utilization, average);
-
+	LOG.info("maxSize2Move = " + maxSize2Move);
         final StorageGroup g;
         if (utilizationDiff > 0) {
           final Source s = dn.addSource(t, maxSize2Move, dispatcher);
@@ -421,8 +421,10 @@ public class Balancer {
 	LOG.info("*** Min: " + min + ", Max: " + max + " ");
         final String key = r.getDatanodeInfo().getDatanodeUuid();
 	final int capacity = capacityMap.get(key);
-        LOG.info("*** DN: " + key + ", hostname: " + r.getDatanodeInfo().getHostName() + ", ipaddress: " + r.getDatanodeInfo().getIpAddr() +  ", xceiverCount: " + capacity);
-        final double weight = (double) (capacity - min) / (max - min);
+        LOG.info("*** DN: hostname: " + r.getDatanodeInfo().getHostName() + ", xceiverCount: " + capacity);
+	double weight = 0.5;	
+	if (max != 0)
+        	weight = (double) (capacity - min) / (max - min);
         loadMap.put(key, weight);
     }
   }
@@ -430,6 +432,7 @@ public class Balancer {
   private long calcMinSize2Move(final long capacity, final Double utilization, final double average) {
     final double utilizationDiff = utilization - average;
     final double thresholdDiff = Math.abs(utilizationDiff) - threshold;
+    LOG.info("utilizationDiff: " + utilizationDiff + ", thresholdDiff: " + thresholdDiff);
     if (thresholdDiff <= 0) // aboveAvg and belowAvg
 	return 0;
     if (utilizationDiff > 0) {  // over
@@ -445,10 +448,11 @@ public class Balancer {
       final long capacity, final Double utilization, final double average) {
     final double utilizationDiff = utilization - average;
     final String key = r.getDatanodeInfo().getDatanodeUuid();
-    LOG.info("*** DN: " + key + ", hostname: " + r.getDatanodeInfo().getHostName() + ", ipaddress: " + r.getDatanodeInfo().getIpAddr() +  ", loadMap: " + loadMap.get(key));
+    LOG.info("*** DN: hostname: " + r.getDatanodeInfo().getHostName() + ", loadMap: " + loadMap.get(key));
     final long minSize2Move = calcMinSize2Move(capacity, utilization, average);
     final long bytes2Avg =  (long) (Math.abs(utilizationDiff) * capacity / 100);
     final long loadBasedBytes = (long) ((bytes2Avg - minSize2Move) * (1 - loadMap.get(key)));
+    LOG.info("*** minSize2Move: " + minSize2Move + ", bytes2Avg: " + bytes2Avg + ", loadBasedBytes: " + loadBasedBytes);
     long maxSize2Move = loadBasedBytes + minSize2Move;
     if (utilizationDiff < 0) {
       maxSize2Move = Math.min(getRemaining(r,t), maxSizeToMove);
@@ -607,12 +611,12 @@ public class Balancer {
   }
 
   private void orderStorageGroupLists() {
-    LOG.info("*** lists before order ***");
+   // LOG.info("*** lists before order ***");
     printStorageGroupList(overUtilized, "overUtilized");
     printStorageGroupList(aboveAvgUtilized, "aboveAvgUtilized");
     printStorageGroupList(belowAvgUtilized, "belowAvgUtilized");
     printStorageGroupList(underUtilized, "underAvgUtilized");
-    Comparator<StorageGroup> comparatorAscending = new Comparator<StorageGroup>() {
+   /* Comparator<StorageGroup> comparatorAscending = new Comparator<StorageGroup>() {
       @Override
       public int compare(StorageGroup left, StorageGroup right) {
         return Long.compare(
@@ -636,7 +640,7 @@ public class Balancer {
     printStorageGroupList(overUtilized, "overUtilized");
     printStorageGroupList(aboveAvgUtilized, "aboveAvgUtilized");
     printStorageGroupList(belowAvgUtilized, "belowAvgUtilized");
-    printStorageGroupList(underUtilized, "underAvgUtilized");
+    printStorageGroupList(underUtilized, "underAvgUtilized");*/
   }
   
   private <T extends StorageGroup> void printStorageGroupList(Collection<T> list, String name) {
@@ -644,8 +648,7 @@ public class Balancer {
     for (T t: list) { 
         LOG.info("[ Host: " + t.getDisplayName() + 
         		 ", Capacity: " + t.getDatanodeInfo().getCapacity() + 
-        		 ", dfsUsed: " +  t.getDatanodeInfo().getDfsUsed() + 
-        		 ", nonDfsUsed: " + t.getDatanodeInfo().getNonDfsUsed() + " ]");
+        		 ", dfsUsed: " +  t.getDatanodeInfo().getDfsUsed() + " ]");
       }
     LOG.info("}");
   }
