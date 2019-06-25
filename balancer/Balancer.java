@@ -455,7 +455,7 @@ public class Balancer {
     LOG.info("*** minSize2Move: " + minSize2Move + ", bytes2Avg: " + bytes2Avg + ", loadBasedBytes: " + loadBasedBytes);
     long maxSize2Move = loadBasedBytes + minSize2Move;
     if (utilizationDiff < 0) {
-      maxSize2Move = Math.min(getRemaining(r,t), maxSizeToMove);
+      maxSize2Move = Math.min(getRemaining(r,t), maxSize2Move);
     }
     return Math.min(maxSizeToMove, maxSize2Move);
   }
