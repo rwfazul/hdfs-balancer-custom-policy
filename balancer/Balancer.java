@@ -215,7 +215,7 @@ public class Balancer {
   private final Collection<StorageGroup> underUtilized
       = new LinkedList<StorageGroup>();
 
-  private final Map<String, Double> weightMap = new HashMap<>();
+
 
   /* Check that this Balancer is compatible with the Block Placement Policy
    * used by the Namenode.
@@ -347,7 +347,7 @@ public class Balancer {
       policy.accumulateSpaces(r);
     }
     policy.initAvgUtilization();
-    computeWeight(reports);
+    computeRacksUtilization(reports);
     // create network topology and classify utilization collections: 
     //   over-utilized, above-average, below-average and under-utilized.
     long overLoadedBytes = 0L, underLoadedBytes = 0L;
@@ -373,7 +373,7 @@ public class Balancer {
         final double thresholdDiff = Math.abs(utilizationDiff) - threshold;
         long maxSize2Move = computeMaxSize2Move(capacity,
             getRemaining(r, t), utilizationDiff, maxSizeToMove);
-        maxSize2Move = recalcMaxSize2Move(r, t, capacity, utilization, average, maxSize2Move);
+        maxSize2Move = recalcMaxSize2Move(r, t, capacity, utilization, average);
         final StorageGroup g;
         if (utilizationDiff > 0) {
           final Source s = dn.addSource(t, maxSize2Move, dispatcher);
@@ -408,41 +408,57 @@ public class Balancer {
     return Math.max(overLoadedBytes, underLoadedBytes);
   }
 
-  private void computeWeight(final List<DatanodeStorageReport> reports) {
-    final Map<StorageType, LinkedList<Long>> capacityMap = new HashMap<>();
+	
+  private void computeRacksUtilization(final List<DatanodeStorageReport> reports) {
+    final Map<String, Long> rackCapacityMap = new HashMap<>();
+    final Map<String, Long> rackRemainingSpaceMap = new HashMap<>();
     for(DatanodeStorageReport r : reports) {
       for(StorageType t : StorageType.getMovableTypes()) {
         final long capacity = getCapacity(r, t);
+	final long remaining = getRemaining(r,t);
         if (capacity == 0L) { // datanode does not have such storage type 
           continue;
         }
-        if (!capacityMap.containsKey(t)) {
-          capacityMap.put(t, new LinkedList<Long>());
-        }
-        capacityMap.get(t).add(capacity);
-	LOG.info("*** Hostname: " + r.getDatanodeInfo().getHostName() + ", capacity: " + capacity);
-      }
-    }
-    for(DatanodeStorageReport r : reports) {
-      for(StorageType t : StorageType.getMovableTypes()) {
-        final long capacity = getCapacity(r, t);
-        if (capacity == 0L) { // datanode does not have such storage type 
-          continue;
-        }
-        final long max = Collections.max(capacityMap.get(t));
-        final long min = Collections.min(capacityMap.get(t));
-        double weight = 0.5;
-        if ((max - min) != 0)
-          weight = (double) (capacity - min) / (max - min);
-        final String key = r.getDatanodeInfo().getDatanodeUuid() + ":" + t;
-	LOG.info("*** Hostname: " + r.getDatanodeInfo().getHostName() + ", weight " + weight + ", key: " + key);
-        weightMap.put(key, weight);
-      }
-    }
+	String rack = r.getDatanodeInfo().getNetworkLocation();
+        if (!capacityMap.containsKey(rack)){
+ 	  rackCapacityMap.put(rack, 0);
+	  rackRemainigMap.put(rack, 0);
+       }
+       rackCapacityMap.put(rackCapacityMap.get(rack) + capacity);
+       rackRemainingSpaceMap.put(rackRemainingSpaceMap.get(rack) + remaining);
+     }
+
+     long totalCapacity = 0;
+     long totalRemaining = 0;
+     for (Map.Entry<String, Long> e : rackCapacityMap.entrySet()) {
+        totalCapacity += e.getValue();
+     	totalRemaining += rackRemainingMap.get(rack);
+     }
+
+     final Double racksAvgUtilization = (double) (totalCapacity - totalRemaining) * 100.0 / totalCapacity;
+
+     for (Map.Entry<String, Long> entry : rackCapacityMap.entrySet()) {
+        final String rack = entry.getKey();
+        final Long rackUsedSpace = entry.getValue() - rackRemainingSpaceMap(rack);
+        final Double rackUtilization = (double) rackUsedSpace * 100.0 / entry.getValue();
+
+	final double rackUtilizationDiff = rackUtilization - racksAvgUtilization;
+	final double rackThresholdDiff = Math.abs(rackUtilizationDiff) - threshold;
+	
+	if (rackThresholdDiff > 0) {
+		if (utilizationDiff > 0) // source
+			overLoadedBytesMap.put(rack, (long) rackThresholdDiff * entry.getValue() / 100.0);
+		else // target
+			underLoadededBytesMap(rack, (long) rackThresholdDiff * entry.getValue() / 100.0);
+	}
+     }
   }
+
     
   private long recalcMaxSize2Move(final DatanodeStorageReport r, final StorageType t, 
-      final long capacity, final Double utilization, final double average, long maxSize2Move) {
+      final long capacity, final Double utilization, final double average) {
+    
+
     final double utilizationDiff = utilization - average;
     final double thresholdDiff = Math.abs(utilizationDiff) - threshold;
     final Double supLimDiff = utilization - (average + threshold);
